@@ -1,9 +1,9 @@
 # GhostChat Widget
 
-**9KB chat widget. Zero cookies. Zero tracking. Fully open source.**
+**~10KB chat widget. Zero cookies. Zero tracking. Fully open source.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Size](https://img.shields.io/badge/gzipped-~9KB-brightgreen)](dist/widget.js)
+[![Size](https://img.shields.io/badge/gzipped-~~10KB-brightgreen)](dist/widget.js)
 [![No cookies](https://img.shields.io/badge/cookies-zero-brightgreen)](#privacy-by-design)
 
 This is the open source client-side widget that powers [GhostChat](https://ghostchat.dev) — a lightweight, privacy-first live chat for websites.
@@ -20,7 +20,7 @@ Sign up at [ghostchat.dev](https://ghostchat.dev/signup) to get your site ID.
 
 ## What's Inside
 
-A single TypeScript file that compiles to ~9KB gzipped. No frameworks, no dependencies.
+A single TypeScript file that compiles to ~~10KB gzipped. No frameworks, no dependencies.
 
 - **WebSocket real-time messaging** — instant two-way communication
 - **File & image uploads** — up to 5MB with inline preview
@@ -48,7 +48,7 @@ Don't take our word for it — read the code:
 
 | Widget | Gzipped Size | Cookies | Tracking |
 |--------|-------------|---------|----------|
-| **GhostChat** | **~9KB** | **None** | **None** |
+| **GhostChat** | **~~10KB** | **None** | **None** |
 | Intercom | ~200KB+ | Yes | Yes |
 | Tawk.to | ~200KB | Yes | Yes |
 | Tidio | ~200KB+ | Yes | Yes |

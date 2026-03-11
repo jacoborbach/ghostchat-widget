@@ -1,7 +1,7 @@
 {
   "name": "ghostchat-widget",
   "version": "1.0.0",
-  "description": "9KB chat widget. Zero cookies. Zero tracking. Fully open source.",
+  "description": "~10KB chat widget. Zero cookies. Zero tracking. Fully open source.",
   "license": "MIT",
   "repository": {
     "type": "git",
