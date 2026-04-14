@@ -1,19 +1,13 @@
 {
-  "name": "ghostchat-widget",
-  "version": "1.0.0",
-  "description": "~10KB chat widget. Zero cookies. Zero tracking. Fully open source.",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/jacoborbach/ghostchat-widget.git"
-  },
-  "homepage": "https://ghostchat.dev",
-  "scripts": {
-    "build": "esbuild src/widget.ts --bundle --minify --outfile=dist/widget.js --format=iife",
-    "dev": "esbuild src/widget.ts --bundle --outfile=dist/widget.js --format=iife --watch"
-  },
-  "devDependencies": {
-    "esbuild": "^0.19.11",
-    "typescript": "^5.3.3"
-  }
+    "name": "ghostchat-widget",
+    "version": "1.0.0",
+    "scripts": {
+        "build": "node scripts/build-and-sync.js",
+        "build:only": "esbuild src/widget.ts --bundle --minify --outfile=dist/widget.js --format=iife",
+        "dev": "esbuild src/widget.ts --bundle --outfile=dist/widget.js --format=iife --watch"
+    },
+    "devDependencies": {
+        "esbuild": "^0.19.11",
+        "typescript": "^5.3.3"
+    }
 }

@@ -5,7 +5,7 @@
   function escapeHtml(str: string): string {
     const d = document.createElement('div');
     d.textContent = str;
-    return d.innerHTML;
+    return d.innerHTML.replace(/"/g, '&quot;');
   }
 
   // Validate color hex
@@ -223,11 +223,6 @@
     try { localStorage.setItem(key, value); } catch { /* ignore */ }
     memStore[key] = value;
   }
-  function storageRemove(key: string) {
-    try { localStorage.removeItem(key); } catch { /* ignore */ }
-    delete memStore[key];
-  }
-
   // Get or create session ID
   function getSessionId(): string {
     const key = 'ghostchat_session_id';
@@ -255,6 +250,16 @@
   // Save email
   function saveEmail(email: string) {
     storageSet('ghostchat_email', email);
+  }
+
+  // Get saved name
+  function getSavedName(): string | null {
+    return storageGet('ghostchat_name');
+  }
+
+  // Save name
+  function saveName(name: string) {
+    storageSet('ghostchat_name', name);
   }
 
   // Get site ID from script tag
@@ -342,10 +347,13 @@
     return data.url;
   }
 
-  // Save email to session
-  async function saveEmailToSession(dbSessionId: string, email: string): Promise<boolean> {
+  // Save visitor info (name and/or email) to session
+  async function saveVisitorInfo(dbSessionId: string, email?: string, name?: string): Promise<boolean> {
+    if (!email && !name) return false;
     try {
-      const payload: any = { sessionId: dbSessionId, email };
+      const payload: any = { sessionId: dbSessionId };
+      if (email) payload.email = email;
+      if (name) payload.name = name;
       const secret = getSessionSecret();
       if (secret) payload.sessionSecret = secret;
       const response = await fetch(`${API_URL}/session/email`, {
@@ -371,15 +379,15 @@
     const siteId = getSiteId();
     if (!siteId) return;
 
-    // UI strings (English-only — re-add i18n if paying users request it)
-    const strings: Record<string, string> = { chatWithUs: 'Chat with us', sendMessage: 'Send a message...', emptyTitle: 'Hey! Drop us a message.', emptySubtitle: "We'll get back to you fast.", awayEmptySubtitle: 'We\'ll reply as soon as we\'re back.', loading: 'Loading...', online: 'Online — replies instantly', leaveMessage: 'Leave a message', yourEmail: 'Your email', save: 'Save', leaveEmail: 'Leave your email', noResponsePrompt: "Want to make sure we don't miss you? Leave your email as a backup." };
-    const t = (key: string): string => strings[key];
-
     const sessionId = getSessionId();
     const configData = await fetchWidgetConfig(siteId);
     if (!configData) return;
 
-    const { widgetSettings, ownerAvailable, hideBranding } = configData;
+    const { widgetSettings, ownerAvailable, hideBranding, nextAvailable } = configData;
+
+    // UI strings (English-only — re-add i18n if paying users request it)
+    const strings: Record<string, string> = { chatWithUs: 'Chat with us', sendMessage: 'Send a message...', sendMessageAway: 'Add your email to send a message', emptyTitle: 'Hey! Drop us a message.', emptySubtitle: "We'll get back to you fast.", awayEmptySubtitle: 'We\'ll reply as soon as we\'re back.', loading: 'Loading...', online: 'Online', leaveMessage: nextAvailable ? `Back ${nextAvailable}` : 'Away — leave a message', yourEmail: 'Your email (optional)', yourEmailRequired: 'Your email (required)', yourName: 'Your name (optional)', save: 'Save', editInfo: 'Edit your info', noResponsePrompt: "Want to make sure we don't miss you? Leave your email as a backup.", addLaterHint: 'Add your name or email anytime via the ••• menu' };
+    const t = (key: string): string => strings[key];
     let dbSessionId: string | null = null;
     let sessionCreating: Promise<string | null> | null = null;
 
@@ -396,13 +404,19 @@
           if (data.sessionSecret) setSessionSecret(data.sessionSecret);
           // Update WebSocket channel to the real session
           ws.updateChannel(`session:${dbSessionId}`);
-          // Sync saved email to server
-          const email = getSavedEmail();
-          if (email && dbSessionId) saveEmailToSession(dbSessionId, email);
+          // Sync saved email/name to server
+          const savedEmail = getSavedEmail();
+          const savedName = getSavedName();
+          if ((savedEmail || savedName) && dbSessionId) saveVisitorInfo(dbSessionId, savedEmail || undefined, savedName || undefined);
           // Sync visitorEmail from server
           if (data.visitorEmail && !getSavedEmail()) {
             saveEmail(data.visitorEmail);
             hasEmail = true;
+          }
+          // Sync visitorName from server
+          if (data.visitorName && !getSavedName()) {
+            saveName(data.visitorName);
+            hasName = true;
           }
           return dbSessionId;
         } catch (e) {
@@ -435,10 +449,21 @@
       'ghost': `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="${GP}"/><circle cx="9" cy="10" r="1.4" fill="${color}"/><circle cx="15" cy="10" r="1.4" fill="${color}"/></svg>`,
     };
     const bubbleIconSvg = ICON_SVGS[iconKey] || ICON_SVGS['chat'];
+
+    // Header icon SVG map (white on colored background, 16x16 for header context)
+    const HEADER_ICON_SVGS: Record<string, string> = {
+      'chat': '<svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M20 2H4C2.9 2 2 2.9 2 4V22L6 18H20C21.1 18 22 17.1 22 16V4C22 2.9 21.1 2 20 2Z"/></svg>',
+      'message-circle': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>',
+      'headset': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0118 0v6"/><path d="M21 19a2 2 0 01-2 2h-1a2 2 0 01-2-2v-3a2 2 0 012-2h3zM3 19a2 2 0 002 2h1a2 2 0 002-2v-3a2 2 0 00-2-2H3z"/></svg>',
+      'help-circle': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+      'ghost': `<svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="${GP}"/><circle cx="9" cy="10" r="1.2" fill="#0f172a"/><circle cx="15" cy="10" r="1.2" fill="#0f172a"/></svg>`,
+    };
+    const headerIconSvg = HEADER_ICON_SVGS[iconKey] || HEADER_ICON_SVGS['chat'];
     
     let isOpen = false;
-    // Check for email from localStorage (server email syncs after ensureSession)
+    // Check for email/name from localStorage (server syncs after ensureSession)
     let hasEmail = !!getSavedEmail();
+    let hasName = !!getSavedName();
     let messages: any[] = [];
     let showEmailInHelper = false; // "Get back by email" or no-response
     let emailDismissed = false; // Visitor dismissed email prompt for this session
@@ -590,6 +615,23 @@
       `;
       bubble.onmouseenter = () => { bubble!.style.transform = 'scale(1.08)'; bubble!.style.boxShadow = '0 4px 16px rgba(0,0,0,0.4)'; };
       bubble.onmouseleave = () => { bubble!.style.transform = 'scale(1)'; bubble!.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)'; };
+      bubble.onfocus = () => { bubble!.style.outline = `3px solid ${color}`; bubble!.style.outlineOffset = '3px'; };
+      bubble.onblur = () => { bubble!.style.outline = 'none'; };
+
+      // Hide bubble on scroll (mobile only) — reappears when scrolling stops
+      if ('ontouchstart' in window) {
+        let scrollTimer: ReturnType<typeof setTimeout> | null = null;
+        window.addEventListener('scroll', () => {
+          if (isOpen || !bubble) return;
+          bubble.style.opacity = '0';
+          bubble.style.pointerEvents = 'none';
+          if (scrollTimer) clearTimeout(scrollTimer);
+          scrollTimer = setTimeout(() => {
+            if (bubble) { bubble.style.opacity = '1'; bubble.style.pointerEvents = 'auto'; }
+          }, 600);
+        }, { passive: true });
+        bubble.style.transition = 'transform 0.15s, box-shadow 0.15s, opacity 0.3s';
+      }
 
       // One-time subtle pulse — ghost "materializing" on page load
       const pulseStyle = document.createElement('style');
@@ -641,11 +683,11 @@
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <div style="display:flex;align-items:center;gap:10px;">
             <div style="width:28px;height:28px;background:${color};border-radius:8px;display:flex;align-items:center;justify-content:center;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="${GP}"/><circle cx="9" cy="10" r="1.2" fill="#0f172a"/><circle cx="15" cy="10" r="1.2" fill="#0f172a"/></svg>
+              ${headerIconSvg}
             </div>
             <div>
               <div style="font-weight:600;font-size:14px;color:#f1f5f9;letter-spacing:-0.01em;">${escapeHtml(siteName)}</div>
-              <div style="font-size:11px;color:#64748b;">${ownerAvailable ? t('online') : t('leaveMessage')}</div>
+              <div style="font-size:11px;color:#64748b;display:flex;align-items:center;gap:5px;"><span style="width:7px;height:7px;border-radius:50%;background:${ownerAvailable ? '#22c55e' : '#f59e0b'};display:inline-block;flex-shrink:0;"></span>${ownerAvailable ? t('online') : t('leaveMessage')}</div>
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:2px;">
@@ -654,7 +696,7 @@
               <div id="ghostchat-menu-dropdown" style="display:none;position:absolute;top:100%;right:0;margin-top:4px;background:#1e293b;border:1px solid #334155;border-radius:8px;padding:4px;min-width:200px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:10;">
                 <button type="button" id="ghostchat-menu-email" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:8px 10px;border:none;background:transparent;color:#e2e8f0;font-size:13px;cursor:pointer;border-radius:6px;" onmouseover="this.style.background='#334155'" onmouseout="this.style.background='transparent'">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4L12 13 2 4"/></svg>
-                  <span id="ghostchat-menu-email-label">${t('leaveEmail')}</span>
+                  <span id="ghostchat-menu-email-label">${t('editInfo')}</span>
                 </button>
               </div>
             </div>
@@ -662,14 +704,21 @@
           </div>
         </div>
       </div>
+      <div id="ghostchat-away-banner" style="display:none;background:#1e293b;padding:8px 12px;font-size:12px;color:#94a3b8;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,0.06);"><span style="color:#f59e0b;">●</span> <span id="ghostchat-away-text"></span></div>
       <div id="ghostchat-messages" role="log" aria-live="polite" style="${embedMode ? 'flex:1;min-height:0;' : 'height:280px;'}overflow-y:auto;padding:16px;background:#111827;"></div>
       <div id="ghostchat-helper" style="display:none;padding:8px 12px;background:#0f172a;border-top:1px solid rgba(255,255,255,0.06);"></div>
-      <div id="ghostchat-email-section" style="display:none;padding:8px 12px;background:#0f172a;border-top:1px solid rgba(255,255,255,0.06);">
-        <form id="ghostchat-email-form" style="display:flex;gap:6px;align-items:center;">
-          <input id="ghostchat-email" type="email" placeholder="${t('yourEmail')}"
-            style="flex:1;padding:7px 10px;border:1px solid #1e293b;border-radius:8px;font-size:12px;outline:none;background:#1e293b;color:#e2e8f0;transition:border-color 0.15s;" onfocus="this.style.borderColor='${color}'" onblur="this.style.borderColor='#1e293b'">
-          <button type="submit" style="background:${color};color:white;border:none;padding:7px 12px;border-radius:8px;cursor:pointer;font-weight:500;font-size:12px;transition:opacity 0.15s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">${t('save')}</button>
-          <button type="button" id="ghostchat-dismiss-email" style="background:none;border:none;color:#475569;cursor:pointer;padding:0 4px;font-size:16px;line-height:1;" title="Dismiss">&times;</button>
+      <div id="ghostchat-info-section" style="display:none;padding:8px 12px;background:#0f172a;border-top:1px solid rgba(255,255,255,0.06);">
+        <form id="ghostchat-info-form" style="display:flex;flex-direction:column;gap:6px;">
+          <div style="display:flex;justify-content:flex-end;">
+            <button type="button" id="ghostchat-dismiss-info" style="background:none;border:none;color:#475569;cursor:pointer;font-size:18px;padding:0;line-height:1;" title="Dismiss">&times;</button>
+          </div>
+          <input id="ghostchat-name" type="text" placeholder="${t('yourName')}" autocomplete="name"
+            style="margin:0 8px;padding:7px 10px;border:1px solid #1e293b;border-radius:8px;font-size:12px;outline:none;background:#1e293b;color:#e2e8f0;transition:border-color 0.15s;" onfocus="this.style.borderColor='${color}'" onblur="this.style.borderColor='#1e293b'">
+          <input id="ghostchat-email" type="email" placeholder="${t('yourEmail')}" autocomplete="email"
+            style="margin:0 8px;padding:7px 10px;border:1px solid #1e293b;border-radius:8px;font-size:12px;outline:none;background:#1e293b;color:#e2e8f0;transition:border-color 0.15s;" onfocus="this.style.borderColor='${color}'" onblur="this.style.borderColor='#1e293b'">
+          <div style="display:flex;justify-content:flex-end;margin:0 8px;">
+            <button type="submit" style="background:${color};color:white;border:none;padding:7px 14px;border-radius:8px;cursor:pointer;font-weight:500;font-size:12px;transition:opacity 0.15s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">${t('save')}</button>
+          </div>
         </form>
       </div>
       <div id="ghostchat-image-preview" style="display:none;padding:8px 12px;background:#0f172a;border-top:1px solid rgba(255,255,255,0.06);"></div>
@@ -679,7 +728,7 @@
           <button type="button" id="ghostchat-attach" title="Attach image" aria-label="Attach file" style="background:transparent;border:none;color:#64748b;cursor:pointer;padding:6px;border-radius:8px;display:flex;align-items:center;justify-content:center;transition:color 0.15s;flex-shrink:0;" onmouseover="this.style.color='#e2e8f0'" onmouseout="this.style.color='#64748b'">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
           </button>
-          <textarea id="ghostchat-input" placeholder="${t('sendMessage')}" rows="1"
+          <textarea id="ghostchat-input" placeholder="${t('sendMessage')}" rows="1" maxlength="5000"
             style="flex:1;padding:10px 14px;border:1px solid #1e293b;border-radius:10px;font-size:14px;outline:none;background:#1e293b;color:#f1f5f9;transition:border-color 0.15s;resize:none;overflow-y:hidden;height:auto;min-height:0;max-height:72px;line-height:1.4;font-family:inherit;box-sizing:border-box;" onfocus="this.style.borderColor='${color}'" onblur="this.style.borderColor='#1e293b'"></textarea>
           <button type="submit" id="ghostchat-send" aria-label="Send message" style="background:${color};color:white;border:none;padding:10px 14px;border-radius:10px;cursor:pointer;font-weight:500;font-size:14px;display:flex;align-items:center;justify-content:center;transition:opacity 0.15s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
@@ -728,8 +777,9 @@
     
     const messagesDiv = document.getElementById('ghostchat-messages')!;
     const helperDiv = document.getElementById('ghostchat-helper')!;
-    const emailSection = document.getElementById('ghostchat-email-section')!;
-    const emailForm = document.getElementById('ghostchat-email-form')!;
+    const infoSection = document.getElementById('ghostchat-info-section')!;
+    const infoForm = document.getElementById('ghostchat-info-form')!;
+    const nameInput = document.getElementById('ghostchat-name') as HTMLInputElement;
     const emailInput = document.getElementById('ghostchat-email') as HTMLInputElement;
     const messageForm = document.getElementById('ghostchat-form')!;
     const messageInput = document.getElementById('ghostchat-input') as HTMLTextAreaElement;
@@ -787,73 +837,73 @@
       };
     }
 
-    // Bind helper email form (shared for away, 5-min, and get-back-by-email)
+    // Bind helper form (shared for away, 5-min, and no-response)
     function bindHelperEmailForm() {
       const helperForm = document.getElementById('ghostchat-helper-email-form');
-      const helperEmailInput = document.getElementById('ghostchat-helper-email') as HTMLInputElement;
-      if (!helperForm || !helperEmailInput) return;
+      const helperEmailInput = document.getElementById('ghostchat-helper-email') as HTMLInputElement | null;
+      const helperNameInput = document.getElementById('ghostchat-helper-name') as HTMLInputElement | null;
+      if (!helperForm) return;
       helperForm.onsubmit = async (e) => {
         e.preventDefault();
-        const email = helperEmailInput.value.trim();
-        if (!email) return;
-        const btn = helperForm.querySelector('button');
-        if (btn) { (btn as HTMLButtonElement).textContent = '...'; (btn as HTMLButtonElement).disabled = true; }
-        if (dbSessionId) {
-          const saved = await saveEmailToSession(dbSessionId, email);
-          if (saved) {
-            saveEmail(email);
-            hasEmail = true;
-            showEmailInHelper = false;
-            renderHelper();
-            updateUI();
-            messageInput.focus();
-          }
-        } else {
-          // No session yet — save locally, will sync on session creation
-          saveEmail(email);
-          hasEmail = true;
-          showEmailInHelper = false;
-          renderHelper();
-          updateUI();
-          messageInput.focus();
-        }
-        if (btn) { (btn as HTMLButtonElement).textContent = t('save'); (btn as HTMLButtonElement).disabled = false; }
+        const email = helperEmailInput?.value.trim() || '';
+        const name = helperNameInput?.value.trim() || '';
+        // When away, email is required
+        if (!ownerAvailable && !email) return;
+        if (!email && !name) return;
+        const submitBtn = helperForm.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+        if (submitBtn) { submitBtn.textContent = '...'; submitBtn.disabled = true; }
+        const sid = await ensureSession();
+        if (sid) await saveVisitorInfo(sid, email || undefined, name || undefined);
+        if (email) { saveEmail(email); hasEmail = true; }
+        if (name) { saveName(name); hasName = true; }
+        showEmailInHelper = false;
+        renderHelper();
+        updateUI();
+        messageInput.focus();
+        if (submitBtn) { submitBtn.textContent = t('save'); submitBtn.disabled = false; }
       };
     }
 
     // Render helper slot: (1) 5-min / get-back-by-email, (2) away email collector, (3) quick links when online
     function renderHelper() {
-      // 5-min no-response or "Get back to me by email" (online but user asked for email)
-      if (ownerAvailable && showEmailInHelper && !hasEmail && !emailDismissed) {
+      // No-response prompt: name+email collector (matches away form)
+      if (ownerAvailable && showEmailInHelper && !(hasEmail || hasName) && !emailDismissed && !hasSentMessage) {
         helperDiv.style.display = 'block';
         helperDiv.innerHTML = `
-          <div style="display:flex;justify-content:space-between;align-items:start;">
-            <p style="margin:0 0 10px;font-size:12px;color:#94a3b8;flex:1;">${t('noResponsePrompt')}</p>
-            <button id="ghostchat-dismiss-helper" type="button" style="background:none;border:none;color:#475569;cursor:pointer;padding:0 0 0 8px;font-size:16px;line-height:1;" title="Dismiss">&times;</button>
-          </div>
-          <form id="ghostchat-helper-email-form" style="display:flex;gap:6px;align-items:center;">
-            <input id="ghostchat-helper-email" type="email" placeholder="${t('yourEmail')}"
-              style="flex:1;padding:7px 10px;border:1px solid #1e293b;border-radius:8px;font-size:12px;outline:none;background:#1e293b;color:#e2e8f0;">
-            <button type="submit" style="background:${color};color:white;border:none;padding:7px 12px;border-radius:8px;cursor:pointer;font-weight:500;font-size:12px;">${t('save')}</button>
+          <form id="ghostchat-helper-email-form" style="display:flex;flex-direction:column;gap:6px;">
+            <div style="display:flex;justify-content:space-between;align-items:start;">
+              <p style="margin:0;font-size:12px;color:#94a3b8;flex:1;">${t('noResponsePrompt')}</p>
+              <button type="button" id="ghostchat-dismiss-helper" style="background:none;border:none;color:#475569;cursor:pointer;padding:0 0 0 8px;font-size:16px;line-height:1;" title="Dismiss">&times;</button>
+            </div>
+            <input id="ghostchat-helper-name" type="text" placeholder="${t('yourName')}" autocomplete="name"
+              style="margin:0 8px;padding:7px 10px;border:1px solid #1e293b;border-radius:8px;font-size:12px;outline:none;background:#1e293b;color:#e2e8f0;box-sizing:border-box;">
+            <input id="ghostchat-helper-email" type="email" placeholder="${t('yourEmail')}" autocomplete="email"
+              style="margin:0 8px;padding:7px 10px;border:1px solid #1e293b;border-radius:8px;font-size:12px;outline:none;background:#1e293b;color:#e2e8f0;box-sizing:border-box;">
+            <div style="display:flex;justify-content:flex-end;margin:0 8px;">
+              <button type="submit" style="background:${color};color:white;border:none;padding:7px 14px;border-radius:8px;cursor:pointer;font-weight:500;font-size:12px;">${t('save')}</button>
+            </div>
           </form>
         `;
         bindHelperEmailForm();
         bindDismissHelper();
         return;
       }
-      // Away: email collector in helper slot until they've submitted email
-      if (!ownerAvailable && !hasEmail && !emailDismissed) {
+      // Away: name+email collector in helper slot — email required before sending
+      if (!ownerAvailable && !hasEmail && !hasSentMessage) {
         helperDiv.style.display = 'block';
         helperDiv.innerHTML = `
-          <form id="ghostchat-helper-email-form" style="display:flex;gap:6px;align-items:center;">
-            <input id="ghostchat-helper-email" type="email" placeholder="${t('yourEmail')}"
-              style="flex:1;padding:7px 10px;border:1px solid #1e293b;border-radius:8px;font-size:12px;outline:none;background:#1e293b;color:#e2e8f0;">
-            <button type="submit" style="background:${color};color:white;border:none;padding:7px 12px;border-radius:8px;cursor:pointer;font-weight:500;font-size:12px;">${t('save')}</button>
-            ${messages.length > 0 ? '<button type="button" id="ghostchat-dismiss-helper" style="background:none;border:none;color:#475569;cursor:pointer;padding:0 4px;font-size:16px;line-height:1;" title="Dismiss">&times;</button>' : ''}
+          <form id="ghostchat-helper-email-form" style="display:flex;flex-direction:column;gap:6px;">
+            <p style="margin:0 8px;font-size:12px;color:#94a3b8;">Leave your email so we can get back to you.</p>
+            <input id="ghostchat-helper-name" type="text" placeholder="${t('yourName')}" autocomplete="name"
+              style="margin:0 8px;padding:7px 10px;border:1px solid #1e293b;border-radius:8px;font-size:12px;outline:none;background:#1e293b;color:#e2e8f0;box-sizing:border-box;">
+            <input id="ghostchat-helper-email" type="email" placeholder="${t('yourEmailRequired')}" autocomplete="email" required
+              style="margin:0 8px;padding:7px 10px;border:1px solid #1e293b;border-radius:8px;font-size:12px;outline:none;background:#1e293b;color:#e2e8f0;box-sizing:border-box;">
+            <div style="display:flex;justify-content:flex-end;margin:0 8px;">
+              <button type="submit" style="background:${color};color:white;border:none;padding:7px 14px;border-radius:8px;cursor:pointer;font-weight:500;font-size:12px;">${t('save')}</button>
+            </div>
           </form>
         `;
         bindHelperEmailForm();
-        if (messages.length > 0) bindDismissHelper();
         return;
       }
       // Online: quick links (slot empty if none configured)
@@ -877,22 +927,33 @@
 
     // Render messages
     function renderMessages() {
-      const awayBanner = !ownerAvailable && messages.length > 0 ? `<div style="background:#1e293b;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#94a3b8;display:flex;align-items:center;gap:8px;"><span style="color:#f59e0b;">●</span>${escapeHtml(awayMessage)}</div>` : '';
+      // Show/hide fixed away banner above messages
+      const awayBannerEl = document.getElementById('ghostchat-away-banner');
+      const awayTextEl = document.getElementById('ghostchat-away-text');
+      if (awayBannerEl && awayTextEl) {
+        if (!ownerAvailable && awayMessage) {
+          awayTextEl.textContent = awayMessage;
+          awayBannerEl.style.display = 'flex';
+        } else {
+          awayBannerEl.style.display = 'none';
+        }
+      }
       if (messages.length === 0) {
-        const subtitle = !ownerAvailable ? t('awayEmptySubtitle') : t('emptySubtitle');
+        const subtitle = ownerAvailable ? t('emptySubtitle') : '';
         const title = !ownerAvailable ? escapeHtml(awayMessage) : t('emptyTitle');
         messagesDiv.innerHTML = `
           <div style="text-align:center;color:#64748b;padding:36px 20px;">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" style="margin:0 auto 12px;display:block;opacity:0.5;"><path d="${GP}" fill="#475569"/><circle cx="9" cy="10" r="1.4" fill="#111827"/><circle cx="15" cy="10" r="1.4" fill="#111827"/></svg>
-            <p style="margin:0;font-size:13px;line-height:1.5;">${title}<br><span style="color:#475569;font-size:12px;">${subtitle}</span></p>
+            <p style="margin:0;font-size:13px;line-height:1.5;">${title}${subtitle ? `<br><span style="color:#475569;font-size:12px;">${subtitle}</span>` : ''}</p>
           </div>
         `;
         return;
       }
 
-      messagesDiv.innerHTML = awayBanner + messages.map(msg => {
-        const imgHtml = msg.imageUrl ? `<img src="${escapeHtml(msg.imageUrl)}" style="max-width:100%;max-height:200px;border-radius:8px;display:block;${msg.content ? 'margin-bottom:6px;' : ''}" loading="lazy" alt="Image">` : '';
-        const textHtml = msg.content ? escapeHtml(msg.content).replace(/\n/g, '<br>') : '';
+      messagesDiv.innerHTML = messages.map(msg => {
+        const imgHtml = msg.imageUrl ? `<a href="${escapeHtml(msg.imageUrl)}" target="_blank" rel="noopener noreferrer" style="display:block;${msg.content ? 'margin-bottom:6px;' : ''}"><img src="${escapeHtml(msg.imageUrl)}" style="max-width:100%;max-height:200px;border-radius:8px;display:block;cursor:pointer;" loading="lazy" alt="Image"></a>` : '';
+        const linkStyle = msg.sender === 'VISITOR' ? 'color:white;text-decoration:underline;' : 'color:#67e8f9;text-decoration:underline;';
+        const textHtml = msg.content ? escapeHtml(msg.content).replace(/\n/g, '<br>').replace(/(https?:\/\/[^\s<]+)/g, `<a href="$1" target="_blank" rel="noopener noreferrer" style="${linkStyle}word-break:break-all;">$1</a>`) : '';
         // Show translation for owner messages (translated to visitor's language)
         const translationHtml = (msg.sender === 'OWNER' && msg.translatedContent)
           ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.15);font-size:12px;opacity:0.85;">${escapeHtml(msg.translatedContent).replace(/\n/g, '<br>')}</div>`
@@ -916,25 +977,35 @@
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    // Update UI based on email state
+    // Update UI based on email/name state
     function updateUI() {
       messageForm.style.display = 'block';
-      // Top email bar: only when online, no email yet, and email is not in the helper slot
-      const showTopEmail = ownerAvailable && !hasEmail && !showEmailInHelper && !emailDismissed && hasSentMessage;
-      emailSection.style.display = showTopEmail ? 'block' : 'none';
+      // Away + no email = block sending until email provided
+      const awayBlocked = !ownerAvailable && !hasEmail;
+      const sendBtn = document.getElementById('ghostchat-send') as HTMLButtonElement | null;
+      if (sendBtn) {
+        sendBtn.disabled = awayBlocked;
+        sendBtn.style.opacity = awayBlocked ? '0.4' : '1';
+        sendBtn.style.cursor = awayBlocked ? 'not-allowed' : 'pointer';
+      }
+      messageInput.disabled = awayBlocked;
+      messageInput.placeholder = awayBlocked ? t('sendMessageAway') : t('sendMessage');
+      messageInput.style.opacity = awayBlocked ? '0.5' : '1';
+      // Show info section (name + email) immediately on open when owner available and no info yet
+      const hasIdentity = hasEmail || hasName;
+      const showInfoSec = ownerAvailable && !hasIdentity && !showEmailInHelper && !emailDismissed && !hasSentMessage;
+      infoSection.style.display = showInfoSec ? 'block' : 'none';
       renderHelper();
       renderMessages();
-      // Menu email option: show saved email with checkmark, or prompt to leave email
-      if (hasEmail) {
-        const savedAddr = getSavedEmail() || '';
-        const truncated = savedAddr.length > 22 ? savedAddr.slice(0, 22) + '...' : savedAddr;
-        menuEmailLabel.textContent = truncated ? `✓ ${truncated} (edit)` : '✓ Email saved';
+      // Menu: show identity summary with checkmark, or prompt to edit
+      if (hasIdentity) {
+        const label = getSavedName() || getSavedEmail() || '';
+        const truncated = label.length > 22 ? label.slice(0, 22) + '...' : label;
+        menuEmailLabel.textContent = truncated ? `✓ ${truncated} (edit)` : '✓ Info saved';
         (menuEmailBtn as HTMLButtonElement).style.color = '#94a3b8';
-        (menuEmailBtn as HTMLButtonElement).style.cursor = 'pointer';
       } else {
-        menuEmailLabel.textContent = t('leaveEmail');
+        menuEmailLabel.textContent = t('editInfo');
         (menuEmailBtn as HTMLButtonElement).style.color = '#e2e8f0';
-        (menuEmailBtn as HTMLButtonElement).style.cursor = 'pointer';
       }
     }
 
@@ -971,7 +1042,7 @@
 
       updateUI();
       noResponseCheck();
-      messageInput.focus();
+      if (!('ontouchstart' in window)) messageInput.focus();
     }
 
     function close() {
@@ -1004,19 +1075,14 @@
     };
     menuEmailBtn.onclick = () => {
       menuDropdown.style.display = 'none';
-      if (hasEmail) {
-        // Edit existing email: reset state to show helper form pre-filled
-        hasEmail = false;
-        showEmailInHelper = true;
-        renderHelper();
-        updateUI();
-        const helperEmailInput = document.getElementById('ghostchat-helper-email') as HTMLInputElement;
-        if (helperEmailInput) helperEmailInput.value = getSavedEmail() || '';
-      } else {
-        showEmailInHelper = true;
-        renderHelper();
-        updateUI();
-      }
+      emailDismissed = false;
+      // Show info section directly with pre-filled values — don't call updateUI()
+      // which would hide it in away mode or when hasIdentity is true
+      helperDiv.style.display = 'none';
+      infoSection.style.display = 'block';
+      nameInput.value = getSavedName() || '';
+      emailInput.value = getSavedEmail() || '';
+      nameInput.focus();
     };
     document.addEventListener('click', menuDismissHandler as EventListener);
 
@@ -1031,40 +1097,38 @@
     }
     if (embedMode) header.style.cursor = 'default';
 
-    // Email form
-    emailForm.onsubmit = async (e) => {
+    // Info form (name + email)
+    infoForm.onsubmit = async (e) => {
       e.preventDefault();
       const email = emailInput.value.trim();
-      if (!email) return;
+      const name = nameInput.value.trim();
+      if (!email && !name) return;
 
-      const btn = emailForm.querySelector('button')!;
-      btn.textContent = '...';
-      btn.disabled = true;
+      const submitBtn = infoForm.querySelector('button[type="submit"]') as HTMLButtonElement;
+      if (submitBtn) { submitBtn.textContent = '...'; submitBtn.disabled = true; }
 
-      const saved = dbSessionId ? await saveEmailToSession(dbSessionId, email) : false;
-      if (saved) {
-        saveEmail(email);
-        hasEmail = true;
-        updateUI();
-        messageInput.focus();
-      } else if (!dbSessionId) {
-        // No session yet — save locally, will sync on session creation
-        saveEmail(email);
-        hasEmail = true;
-        updateUI();
-        messageInput.focus();
-      } else {
-        emailInput.style.borderColor = '#ef4444';
+      if (dbSessionId) {
+        await saveVisitorInfo(dbSessionId, email || undefined, name || undefined);
       }
+      if (email) { saveEmail(email); hasEmail = true; }
+      if (name) { saveName(name); hasName = true; }
+      updateUI();
+      messageInput.focus();
 
-      btn.textContent = t('save');
-      btn.disabled = false;
+      if (submitBtn) { submitBtn.textContent = t('save'); submitBtn.disabled = false; }
     };
 
-    // Dismiss top email bar
-    const dismissEmailBtn = document.getElementById('ghostchat-dismiss-email');
-    if (dismissEmailBtn) dismissEmailBtn.onclick = () => {
+    // Dismiss info section — show hint then collapse
+    const dismissInfoBtn = document.getElementById('ghostchat-dismiss-info');
+    if (dismissInfoBtn) dismissInfoBtn.onclick = () => {
       emailDismissed = true;
+      infoSection.style.display = 'none';
+      // Brief hint in place of the section
+      const hint = document.createElement('div');
+      hint.style.cssText = 'padding:6px 12px;background:#0f172a;border-top:1px solid rgba(255,255,255,0.06);font-size:11px;color:#475569;text-align:center;transition:opacity 0.4s;';
+      hint.textContent = t('addLaterHint');
+      infoSection.parentNode?.insertBefore(hint, infoSection.nextSibling);
+      setTimeout(() => { hint.style.opacity = '0'; setTimeout(() => hint.remove(), 400); }, 3000);
       updateUI();
     };
 
@@ -1158,6 +1222,8 @@
     // Message form
     messageForm.onsubmit = async (e) => {
       e.preventDefault();
+      // Block sending when away and no email provided
+      if (!ownerAvailable && !hasEmail) return;
       const content = messageInput.value.trim();
       const hasImage = !!pendingImageFile;
       if (!content && !hasImage) return;
@@ -1204,10 +1270,9 @@
       messageInput.focus();
     };
 
-    // Mark hasEmail from localStorage (server sync happens in ensureSession)
-    if (getSavedEmail()) {
-      hasEmail = true;
-    }
+    // Mark hasEmail/hasName from localStorage (server sync happens in ensureSession)
+    if (getSavedEmail()) hasEmail = true;
+    if (getSavedName()) hasName = true;
     
     // --- Visitor Context API (Business plan) ---
     let currentContext: Record<string, any> | null = null;

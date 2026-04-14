@@ -23,15 +23,17 @@ Sign up at [ghostchat.dev](https://ghostchat.dev/signup) to get your site ID.
 A single TypeScript file that compiles to ~10KB gzipped. No frameworks, no dependencies.
 
 - **WebSocket real-time messaging** — instant two-way communication
-- **File & image uploads** — up to 5MB with inline preview
+- **File & image uploads** — up to 5MB with inline preview, tap to open full-size
 - **Typing indicators** — both visitor and agent, in real time
 - **Page journey tracking** — SPA-aware, shows agents which pages the visitor browsed
-- **Email capture** — prompts visitor for email when no agent responds
-- **Presence detection** — online/away status via `visibilitychange` and `beforeunload`
+- **Visitor identity** — optional name and email capture, required during away hours
+- **Presence detection** — green/orange status dot, online/away via `visibilitychange` and `beforeunload`
+- **Quick links** — configurable shortcut buttons above the message input
+- **URL auto-linking** — URLs in messages become clickable links automatically
 - **Notification sounds** — synthesized audio ding, no external files
 - **Unread badge** — shows count on the launcher button
 - **Dark mode** — respects `prefers-color-scheme`
-- **Customizable** — position, colors, welcome message via `data-*` attributes
+- **Customizable** — position, colors, icon, welcome message via `data-*` attributes
 
 ## Privacy by Design
 
@@ -40,7 +42,7 @@ Don't take our word for it — read the code:
 - `grep "document.cookie"` → **0 results** — no cookies, ever
 - `grep "analytics\|tracking\|pixel"` → **0 results** — no tracking scripts
 - `grep "fingerprint"` → **0 results** — no browser fingerprinting
-- **localStorage keys**: only 4 (`ghostchat_session_id`, `ghostchat_session_secret`, `ghostchat_email`, `ghostchat_tooltip_shown`)
+- **localStorage keys**: only 5 (`ghostchat_session_id`, `ghostchat_session_secret`, `ghostchat_email`, `ghostchat_name`, `ghostchat_tooltip_shown`)
 - All API calls go to **your GhostChat API domain only** — no third-party requests
 - No CDN dependencies, no external fonts, no iframes from other domains
 
